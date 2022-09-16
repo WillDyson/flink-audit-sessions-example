@@ -2,7 +2,11 @@ package com.cloudera.wdyson.flink.auditsession;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.utils.ParameterTool;
+import org.apache.flink.connector.base.DeliveryGuarantee;
+import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
+import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -49,7 +53,28 @@ public class App {
             Properties kafkaProps,
             DataStream<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> stream) {
 
-        stream.print();
+        String bootstrapServers = kafkaProps.getProperty("bootstrap.servers");
+        String topic = kafkaProps.getProperty("topic");
+
+        KafkaSink<String> sink = KafkaSink.<String>builder()
+            .setBootstrapServers(bootstrapServers)
+            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+                    .setTopic(topic)
+                    .setValueSerializationSchema(new SimpleStringSchema())
+                    .build()
+            )
+            .setDeliverGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
+            .setKafkaProducerConfig(kafkaProps)
+            .build();
+
+        stream
+            .map((res) -> String.format(
+                "%d-%d: %s -> %d",
+                res.window.getStart(),
+                res.window.getEnd(),
+                res.key,
+                res.value))
+            .sinkTo(sink);
     }
 
     private static Properties readKafkaProperties(ParameterTool params) {
@@ -84,9 +109,7 @@ public class App {
             .aggregate(new AggregateDeniedCounts(), new WrapValueWithKeyAndWindow<String, Integer>())
             .filter((res) -> res.value != 0);
 
-        Properties kafkaProps = readKafkaProperties(params);
-
-        writeUserSessionDeniedAccessCountsToKafka(env, kafkaProps, userSessionDeniedAuditCounts);
+        writeUserSessionDeniedAccessCountsToKafka(env, readKafkaProperties(params), userSessionDeniedAuditCounts);
 
         env.execute();
     }
