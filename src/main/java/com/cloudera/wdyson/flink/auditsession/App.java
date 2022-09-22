@@ -1,8 +1,9 @@
 package com.cloudera.wdyson.flink.auditsession;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.java.io.TextInputFormat;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
@@ -13,10 +14,8 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.FileProcessingMode;
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
-import org.apache.flink.util.Collector;
 
 import java.time.Duration;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Map.Entry;
 
@@ -34,15 +33,14 @@ public class App {
         AuditInputFormat format = new AuditInputFormat(new Path(path));
 
         return env
-            .readFile(format, path, FileProcessingMode.PROCESS_CONTINUOUSLY, Time.seconds(fsPollSeconds).toMilliseconds())
-            .flatMap(new FlatMapFunction<String, Audit>() {
-                @Override
-                public void flatMap(String json, Collector<Audit> out) {
-                    Optional<Audit> maybeAudit = Audit.fromJson(json);
-
-                    maybeAudit.ifPresent((audit) -> out.collect(audit));
-                }
-            })
+            .readFile(
+                    format,
+                    path,
+                    FileProcessingMode.PROCESS_CONTINUOUSLY,
+                    Time.seconds(params.getInt(PARAM_AUDIT_FS_POLL_SECONDS)).toMilliseconds())
+            .uid("raw-audit-file-fs").name("Raw Audit Input from FS")
+            .flatMap(new FlatMapAuditsFromJson())
+            .uid("audit-input-fs").name("Audit Input from FS")
             .assignTimestampsAndWatermarks(WatermarkStrategy
                     .<Audit>forBoundedOutOfOrderness(Duration.ofDays(5))
                     .withTimestampAssigner((e, t) -> e.evtTime.getTime()));
