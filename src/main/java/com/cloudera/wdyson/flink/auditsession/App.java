@@ -23,6 +23,7 @@ public class App {
     public static String PARAM_AUDIT_FS_PATH = "audit.path";
     public static String PARAM_AUDIT_FS_POLL_SECONDS = "audit.poll";
     public static String PARAM_AUDIT_ALLOWED_LATENESS_DAYS = "audit.allowed_lateness";
+    public static String PARAM_AUDIT_MIN_DATE = "audit.min_date";
     public static String PARAM_SESSION_DURATION_SECONDS = "session.duration";
     public static String PARAM_SESSION_OUTPUT = "session.output";
     public static String PARAM_KAFKA_PREFIX = "kafka.";
@@ -36,6 +37,10 @@ public class App {
         FileInputFormat<String> format = new TextInputFormat(new Path(path));
 
         format.setNestedFileEnumeration(true);
+
+        if (params.has(PARAM_AUDIT_MIN_DATE)) {
+            format.setFilesFilter(new DateFileFilter(params.get(PARAM_AUDIT_MIN_DATE)));
+        }
 
         return env
             .readFile(
