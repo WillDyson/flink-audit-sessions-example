@@ -23,13 +23,11 @@ class TestJson {
     void simpleAuditParseTest() throws Exception {
         String json = readResource("audit-examples/kafka-1.json");
 
-        Optional<Audit> maybeAudit = Audit.fromJson(json);
+        Audit audit = Audit.fromJson(json);
 
-        if (!maybeAudit.isPresent()) {
+        if (audit == null) {
             fail("Simple audit could not be parsed");
         }
-
-        Audit audit = maybeAudit.get();
 
         assertEquals(9, audit.repoType);
         assertEquals("wdyson", audit.reqUser);
