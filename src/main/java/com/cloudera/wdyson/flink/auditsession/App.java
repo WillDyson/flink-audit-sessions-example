@@ -22,15 +22,20 @@ import java.util.Map.Entry;
 public class App {
     public static String PARAM_AUDIT_FS_PATH = "audit.path";
     public static String PARAM_AUDIT_FS_POLL_SECONDS = "audit.poll";
+    public static String PARAM_AUDIT_ALLOWED_LATENESS_DAYS = "audit.allowed_lateness";
     public static String PARAM_SESSION_DURATION_SECONDS = "session.duration";
+    public static String PARAM_SESSION_OUTPUT = "session.output";
     public static String PARAM_KAFKA_PREFIX = "kafka.";
 
     public static DataStream<Audit> readAuditsFromFS(
             StreamExecutionEnvironment env,
-            String path,
-            int fsPollSeconds) {
+            ParameterTool params) {
 
-        AuditInputFormat format = new AuditInputFormat(new Path(path));
+        String path = params.getRequired(PARAM_AUDIT_FS_PATH);
+
+        FileInputFormat<String> format = new TextInputFormat(new Path(path));
+
+        format.setNestedFileEnumeration(true);
 
         return env
             .readFile(
@@ -42,14 +47,32 @@ public class App {
             .flatMap(new FlatMapAuditsFromJson())
             .uid("audit-input-fs").name("Audit Input from FS")
             .assignTimestampsAndWatermarks(WatermarkStrategy
-                    .<Audit>forBoundedOutOfOrderness(Duration.ofDays(5))
-                    .withTimestampAssigner((e, t) -> e.evtTime.getTime()));
+                    .<Audit>forBoundedOutOfOrderness(Duration.ofDays(params.getInt(PARAM_AUDIT_ALLOWED_LATENESS_DAYS, 2)))
+                    .withTimestampAssigner((e, t) -> e.evtTime.getTime()))
+            .uid("audit-input-fs-time").name("Audit Input from FS with Time");
+    }
+
+    public static void printUserSessionDeniedAccessCountsToStdout(
+            StreamExecutionEnvironment env,
+            DataStream<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> stream) {
+
+        stream
+            .map((res) -> String.format(
+                "%d-%d: %s -> %d",
+                res.window.getStart(),
+                res.window.getEnd(),
+                res.key,
+                res.value))
+            .print()
+            .uid("stdout-session-sink").name("Output session counts to stdout");
     }
 
     public static void writeUserSessionDeniedAccessCountsToKafka(
             StreamExecutionEnvironment env,
-            Properties kafkaProps,
+            ParameterTool params,
             DataStream<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> stream) {
+
+        Properties kafkaProps = readKafkaProperties(params);
 
         String bootstrapServers = kafkaProps.getProperty("bootstrap.servers");
         String topic = kafkaProps.getProperty("topic");
@@ -72,7 +95,8 @@ public class App {
                 res.window.getEnd(),
                 res.key,
                 res.value))
-            .sinkTo(sink);
+            .sinkTo(sink)
+            .uid("kafka-session-sink").name("Output session counts to Kafka");
     }
 
     private static Properties readKafkaProperties(ParameterTool params) {
@@ -90,6 +114,7 @@ public class App {
     }
 
     public static void main(String[] args) throws Exception {
+
         if (args.length < 1) {
             throw new IllegalArgumentException("A properties file must be provided as an argument");
         }
@@ -98,16 +123,27 @@ public class App {
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        DataStream<Audit> audits = readAuditsFromFS(env, params.getRequired(PARAM_AUDIT_FS_PATH), params.getInt(PARAM_AUDIT_FS_POLL_SECONDS));
+        DataStream<Audit> audits = readAuditsFromFS(env, params);
 
         DataStream<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> userSessionDeniedAuditCounts = audits
             .filter((audit) -> audit.reqUser != null)
+            .uid("audits-non-null").name("Audits with non-null requestor")
             .keyBy((audit) -> audit.reqUser)
             .window(EventTimeSessionWindows.withGap(Time.minutes(params.getInt(PARAM_SESSION_DURATION_SECONDS))))
             .aggregate(new AggregateDeniedCounts(), new WrapValueWithKeyAndWindow<String, Integer>())
-            .filter((res) -> res.value != 0);
+            .uid("user-session-denied-counts").name("Denied counts in User session")
+            .filter((res) -> res.value != 0)
+            .uid("user-session-denied-counts-non-zero").name("Non-zero denied counts in User session");
 
-        writeUserSessionDeniedAccessCountsToKafka(env, readKafkaProperties(params), userSessionDeniedAuditCounts);
+        String sessionOutputType = params.get(PARAM_SESSION_OUTPUT, "kafka");
+
+        if (sessionOutputType.equals("kafka")) {
+            writeUserSessionDeniedAccessCountsToKafka(env, params, userSessionDeniedAuditCounts);
+        } else if (sessionOutputType.equals("print")) {
+            printUserSessionDeniedAccessCountsToStdout(env, userSessionDeniedAuditCounts);
+        } else {
+            throw new IllegalArgumentException(String.format("Parameter %s must be one of: [kafka, print]", PARAM_SESSION_OUTPUT));
+        }
 
         env.execute();
     }
