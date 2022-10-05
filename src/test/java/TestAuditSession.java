@@ -1,28 +1,26 @@
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import java.sql.Timestamp;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.List;
 
 import com.cloudera.wdyson.flink.auditsession.App;
 import com.cloudera.wdyson.flink.auditsession.Audit;
 import com.cloudera.wdyson.flink.auditsession.WrapValueWithKeyAndWindow;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.junit.jupiter.api.Test;
 
 class TestAuditSession {
-    private static Map<String, Integer> lastSessionResult = new ConcurrentHashMap<>();
-    private static Map<String, Integer> sessionCounts = new ConcurrentHashMap<>();
-
     @Test
     void simpleAuditSession() throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        Configuration conf = new Configuration();
+        conf.setString("jobmanager.bind-host", "127.0.0.1");
+        conf.setString("taskmanager.bind-host", "127.0.0.1");
+        StreamExecutionEnvironment env = StreamExecutionEnvironment
+            .createLocalEnvironment(1, conf);
 
         Audit audit1 = new Audit();
         audit1.reqUser = "wdyson";
@@ -51,31 +49,14 @@ class TestAuditSession {
 
         DataStream<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> results = App.extractDeniedAuditCountsUserSession(audits, 1200);
 
-        results.addSink(new SinkFunction<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow>() {
-            @Override
-            public void invoke(WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow value, Context context) {
-                lastSessionResult.put(value.key, value.value);
-                sessionCounts.put(value.key, sessionCounts.getOrDefault(value.key, 0) + 1);
-            }
-        })
-        .setParallelism(1);
+        List<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> output = results.executeAndCollect(100);
 
-        env.execute();
+        assertEquals(2, output.size());
 
-        assertEquals(2, lastSessionResult.size());
-        assertEquals(2, sessionCounts.size());
+        assertEquals("wdyson", output.get(0).key);
+        assertEquals(1, output.get(0).value);
 
-        if (!lastSessionResult.containsKey("wdyson")
-                || !sessionCounts.containsKey("wdyson")
-                || !lastSessionResult.containsKey("bob")
-                || !sessionCounts.containsKey("bob")) {
-            fail("Session tracker did not contain expected keys");
-        }
-
-        assertEquals(1, sessionCounts.get("wdyson"));
-        assertEquals(1, sessionCounts.get("bob"));
-
-        assertEquals(1, lastSessionResult.get("wdyson"));
-        assertEquals(2, lastSessionResult.get("bob"));
+        assertEquals("bob", output.get(1).key);
+        assertEquals(2, output.get(1).value);
     }
 }
