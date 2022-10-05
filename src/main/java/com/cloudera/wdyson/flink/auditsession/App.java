@@ -67,6 +67,7 @@ public class App {
                 res.count,
                 res.window.getStart(),
                 res.window.getEnd()))
+            .uid("stdout-format-stream").name("Format Stream")
             .print()
             .uid("stdout-session-sink").name("Output session counts to stdout");
     }
@@ -98,6 +99,7 @@ public class App {
                 res.count,
                 res.window.getStart(),
                 res.window.getEnd()))
+            .uid("kafka-format-stream").name("Format Stream")
             .sinkTo(sink)
             .uid("kafka-session-sink").name("Output session counts to Kafka");
     }
