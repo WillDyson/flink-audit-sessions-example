@@ -61,12 +61,12 @@ public class App {
 
     public static void printUserSessionDeniedAccessCountsToStdout(
             StreamExecutionEnvironment env,
-            DataStream<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> stream) {
+            DataStream<UserSessionCountResult> stream) {
 
         stream
             .map((res) -> String.format("user='%s' denies=%d start=%d end=%d",
-                res.key,
-                res.value,
+                res.reqUser,
+                res.count,
                 res.window.getStart(),
                 res.window.getEnd()))
             .print()
@@ -76,7 +76,7 @@ public class App {
     public static void writeUserSessionDeniedAccessCountsToKafka(
             StreamExecutionEnvironment env,
             ParameterTool params,
-            DataStream<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> stream) {
+            DataStream<UserSessionCountResult> stream) {
 
         Properties kafkaProps = readKafkaProperties(params);
 
@@ -96,8 +96,8 @@ public class App {
 
         stream
             .map((res) -> String.format("user='%s' denies=%d start=%d end=%d",
-                res.key,
-                res.value,
+                res.reqUser,
+                res.count,
                 res.window.getStart(),
                 res.window.getEnd()))
             .sinkTo(sink)
@@ -118,15 +118,15 @@ public class App {
         return props;
     }
 
-    public static DataStream<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> extractDeniedAuditCountsUserSession(DataStream<Audit> audits, int sessionGapSeconds) {
+    public static DataStream<UserSessionCountResult> extractDeniedAuditCountsUserSession(DataStream<Audit> audits, int sessionGapSeconds) {
         return audits
             .filter((audit) -> audit.reqUser != null)
             .uid("audits-non-null").name("Audits with non-null requestor")
             .keyBy((audit) -> audit.reqUser)
             .window(EventTimeSessionWindows.withGap(Time.seconds(sessionGapSeconds)))
-            .aggregate(new AggregateDeniedCounts(), new WrapValueWithKeyAndWindow<String, Integer>())
+            .aggregate(new AggregateDeniedCounts(), new WrapUserAndWindowWithCount())
             .uid("user-session-denied-counts").name("Denied counts in User session")
-            .filter((res) -> res.value != 0)
+            .filter((res) -> res.count != 0)
             .uid("user-session-denied-counts-non-zero").name("Non-zero denied counts in User session");
     }
 
@@ -142,7 +142,7 @@ public class App {
 
         DataStream<Audit> audits = readAuditsFromFS(env, params);
 
-        DataStream<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> userSessionDeniedAuditCounts =
+        DataStream<UserSessionCountResult> userSessionDeniedAuditCounts =
             extractDeniedAuditCountsUserSession(audits, params.getInt(PARAM_SESSION_DURATION_SECONDS));
 
         String sessionOutputType = params.get(PARAM_SESSION_OUTPUT, "kafka");

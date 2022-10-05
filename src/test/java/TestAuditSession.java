@@ -7,10 +7,9 @@ import java.util.List;
 
 import com.cloudera.wdyson.flink.auditsession.App;
 import com.cloudera.wdyson.flink.auditsession.Audit;
-import com.cloudera.wdyson.flink.auditsession.WrapValueWithKeyAndWindow;
+import com.cloudera.wdyson.flink.auditsession.UserSessionCountResult;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -58,7 +57,7 @@ class TestAuditSession {
                     .<Audit>forMonotonousTimestamps()
                     .withTimestampAssigner((e, t) -> e.evtTime.getTime()));
 
-        DataStream<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> results = App.extractDeniedAuditCountsUserSession(audits, 1200);
+        DataStream<UserSessionCountResult> results = App.extractDeniedAuditCountsUserSession(audits, 1200);
 
         CollectSink.values.clear();
         results.addSink(new CollectSink());
@@ -67,19 +66,19 @@ class TestAuditSession {
 
         assertEquals(2, CollectSink.values.size());
 
-        assertEquals("wdyson", CollectSink.values.get(0).key);
-        assertEquals(1, CollectSink.values.get(0).value);
+        assertEquals("wdyson", CollectSink.values.get(0).reqUser);
+        assertEquals(1, CollectSink.values.get(0).count);
 
-        assertEquals("bob", CollectSink.values.get(1).key);
-        assertEquals(2, CollectSink.values.get(1).value);
+        assertEquals("bob", CollectSink.values.get(1).reqUser);
+        assertEquals(2, CollectSink.values.get(1).count);
     }
 
-    private static class CollectSink implements SinkFunction<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> {
-        public static final List<WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow> values =
+    private static class CollectSink implements SinkFunction<UserSessionCountResult> {
+        public static final List<UserSessionCountResult> values =
             Collections.synchronizedList(new ArrayList<>());
 
         @Override
-        public void invoke(WrapValueWithKeyAndWindow<String, Integer>.ValueWithKeyAndWindow value, SinkFunction.Context context) throws Exception {
+        public void invoke(UserSessionCountResult value, SinkFunction.Context context) throws Exception {
             values.add(value);
         }
     }
