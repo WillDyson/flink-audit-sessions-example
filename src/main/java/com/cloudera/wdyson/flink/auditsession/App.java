@@ -35,9 +35,7 @@ public class App {
         String auditPath = params.getRequired(PARAM_AUDIT_FS_PATH);
 
         FileInputFormat<String> format = new TextInputFormat(new Path(auditPath));
-
         format.setNestedFileEnumeration(true);
-
         if (params.has(PARAM_AUDIT_MIN_DATE)) {
             format.setFilesFilter(new DateFileFilter(params.get(PARAM_AUDIT_MIN_DATE)));
         }
@@ -131,7 +129,6 @@ public class App {
     }
 
     public static void main(String[] args) throws Exception {
-
         if (args.length < 1) {
             throw new IllegalArgumentException("A properties file must be provided as an argument");
         }
@@ -145,14 +142,15 @@ public class App {
         DataStream<UserSessionCountResult> userSessionDeniedAuditCounts =
             extractDeniedAuditCountsUserSession(audits, params.getInt(PARAM_SESSION_DURATION_SECONDS));
 
-        String sessionOutputType = params.get(PARAM_SESSION_OUTPUT, "kafka");
-
-        if (sessionOutputType.equals("kafka")) {
-            writeUserSessionDeniedAccessCountsToKafka(env, params, userSessionDeniedAuditCounts);
-        } else if (sessionOutputType.equals("print")) {
-            printUserSessionDeniedAccessCountsToStdout(env, userSessionDeniedAuditCounts);
-        } else {
-            throw new IllegalArgumentException(String.format("Parameter %s must be one of: [kafka, print]", PARAM_SESSION_OUTPUT));
+        switch (params.get(PARAM_SESSION_OUTPUT, "kafka")) {
+            case "kafka":
+                writeUserSessionDeniedAccessCountsToKafka(env, params, userSessionDeniedAuditCounts);
+                break;
+            case "print":
+                printUserSessionDeniedAccessCountsToStdout(env, userSessionDeniedAuditCounts);
+                break;
+            default:
+                throw new IllegalArgumentException(String.format("Parameter %s must be one of: [kafka, print]", PARAM_SESSION_OUTPUT));
         }
 
         env.execute();
