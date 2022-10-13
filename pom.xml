@@ -2,7 +2,7 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.cloudera.wdyson.flink</groupId>
+  <groupId>uk.wdyson.examples.flink</groupId>
   <artifactId>auditsession</artifactId>
   <version>1.0-SNAPSHOT</version>
  
@@ -106,7 +106,7 @@
               <archive>
                 <manifest>
                   <addClasspath>true</addClasspath>
-                  <mainClass>com.cloudera.wdyson.flink.auditsession.App</mainClass>
+                  <mainClass>uk.wdyson.examples.flink.auditsession.App</mainClass>
                 </manifest>
               </archive>
             </configuration>
@@ -120,7 +120,7 @@
               </descriptorRefs>
               <archive>
                 <manifest>
-                  <mainClass>com.cloudera.wdyson.flink.auditsession.App</mainClass>
+                  <mainClass>uk.wdyson.examples.flink.auditsession.App</mainClass>
                 </manifest>
               </archive>
             </configuration>

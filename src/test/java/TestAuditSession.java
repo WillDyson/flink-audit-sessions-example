@@ -5,10 +5,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import com.cloudera.wdyson.flink.auditsession.App;
-import com.cloudera.wdyson.flink.auditsession.Audit;
-import com.cloudera.wdyson.flink.auditsession.UserSessionCountResult;
-
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -17,6 +13,10 @@ import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.junit.ClassRule;
 import org.junit.jupiter.api.Test;
+
+import uk.wdyson.examples.flink.auditsession.App;
+import uk.wdyson.examples.flink.auditsession.Audit;
+import uk.wdyson.examples.flink.auditsession.UserSessionCountResult;
 
 class TestAuditSession {
     @ClassRule

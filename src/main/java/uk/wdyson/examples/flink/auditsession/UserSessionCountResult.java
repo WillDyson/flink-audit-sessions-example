@@ -1,4 +1,4 @@
-package com.cloudera.wdyson.flink.auditsession;
+package uk.wdyson.examples.flink.auditsession;
 
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 

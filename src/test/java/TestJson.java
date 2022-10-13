@@ -6,9 +6,9 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
-import com.cloudera.wdyson.flink.auditsession.Audit;
-
 import org.junit.jupiter.api.Test;
+
+import uk.wdyson.examples.flink.auditsession.Audit;
 
 class TestJson {
     private String readResource(String path) throws IOException, URISyntaxException {
