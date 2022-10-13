@@ -8,9 +8,9 @@ public class AggregateDeniedCounts implements AggregateFunction<Audit, Integer, 
         // result == 1 means the action was allowed
         boolean allowed = audit.result == 1;
 
-        // if not allowed then increment the count by 1
+        // if not allowed then increment the count by the event count
         if (!allowed) {
-            return acc + 1;
+            return acc + audit.event_count;
         } else {
             return acc;
         }
