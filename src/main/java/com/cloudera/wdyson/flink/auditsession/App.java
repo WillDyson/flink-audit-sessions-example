@@ -22,7 +22,6 @@ import java.util.Map.Entry;
 public class App {
     public static String PARAM_AUDIT_FS_PATH = "audit.path";
     public static String PARAM_AUDIT_FS_POLL_SECONDS = "audit.poll";
-    public static String PARAM_AUDIT_ALLOWED_LATENESS_DAYS = "audit.allowed_lateness";
     public static String PARAM_AUDIT_MIN_DATE = "audit.min_date";
     public static String PARAM_SESSION_DURATION_SECONDS = "session.duration";
     public static String PARAM_SESSION_OUTPUT = "session.output";
@@ -36,25 +35,30 @@ public class App {
 
         FileInputFormat<String> format = new TextInputFormat(new Path(auditPath));
         format.setNestedFileEnumeration(true);
+
         if (params.has(PARAM_AUDIT_MIN_DATE)) {
             format.setFilesFilter(new DateFileFilter(params.get(PARAM_AUDIT_MIN_DATE)));
         }
 
-        return env
-            .readFile(
-                format,
-                auditPath,
-                FileProcessingMode.PROCESS_CONTINUOUSLY,
-                Time.seconds(params.getInt(PARAM_AUDIT_FS_POLL_SECONDS)).toMilliseconds())
-            .uid("raw-audit-file-fs").name("Raw Audit Input from FS")
+        int auditPollMs = params.getInt(PARAM_AUDIT_FS_POLL_SECONDS)*1000;
+
+        DataStream<String> rawAudits = env
+            .readFile(format, auditPath, FileProcessingMode.PROCESS_CONTINUOUSLY, auditPollMs)
+            .uid("raw-audit-file-fs").name("Raw Audit Input from FS");
+
+        DataStream<Audit> audits = rawAudits
             .map((rawAudit) -> Audit.fromJson(rawAudit))
             .uid("audit-input-fs-nullable").name("Audit Input from FS (Nullable)")
-            .filter((audit) -> audit != null)
-            .uid("audit-input-fs").name("Audit Input from FS")
+            .filter((audit) -> audit != null && audit.reqUser != null)
+            .uid("audit-input-fs").name("Audit Input from FS");
+
+        DataStream<Audit> auditsWithTime = audits
             .assignTimestampsAndWatermarks(WatermarkStrategy
-                    .<Audit>forBoundedOutOfOrderness(Duration.ofDays(params.getInt(PARAM_AUDIT_ALLOWED_LATENESS_DAYS, 2)))
+                    .<Audit>forBoundedOutOfOrderness(Duration.ofDays(2))
                     .withTimestampAssigner((e, t) -> e.evtTime.getTime()))
             .uid("audit-input-fs-time").name("Audit Input from FS with Time");
+
+        return auditsWithTime;
     }
 
     public static void printUserSessionDeniedAccessCountsToStdout(
@@ -84,7 +88,8 @@ public class App {
 
         KafkaSink<String> sink = KafkaSink.<String>builder()
             .setBootstrapServers(bootstrapServers)
-            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+            .setRecordSerializer(
+                KafkaRecordSerializationSchema.builder()
                     .setTopic(topic)
                     .setValueSerializationSchema(new SimpleStringSchema())
                     .build()
@@ -120,8 +125,6 @@ public class App {
 
     public static DataStream<UserSessionCountResult> extractDeniedAuditCountsUserSession(DataStream<Audit> audits, int sessionGapSeconds) {
         return audits
-            .filter((audit) -> audit.reqUser != null)
-            .uid("audits-non-null").name("Audits with non-null requestor")
             .keyBy((audit) -> audit.reqUser)
             .window(EventTimeSessionWindows.withGap(Time.seconds(sessionGapSeconds)))
             .aggregate(new AggregateDeniedCounts(), new WrapUserAndWindowWithCount())
@@ -139,10 +142,10 @@ public class App {
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        DataStream<Audit> audits = readAuditsFromFS(env, params);
+        DataStream<Audit> auditsWithTime = readAuditsFromFS(env, params);
 
         DataStream<UserSessionCountResult> userSessionDeniedAuditCounts =
-            extractDeniedAuditCountsUserSession(audits, params.getInt(PARAM_SESSION_DURATION_SECONDS));
+            extractDeniedAuditCountsUserSession(auditsWithTime, params.getInt(PARAM_SESSION_DURATION_SECONDS));
 
         switch (params.get(PARAM_SESSION_OUTPUT, "kafka")) {
             case "kafka":
