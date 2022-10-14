@@ -34,24 +34,28 @@ class TestAuditSession {
 
         Audit audit1 = new Audit();
         audit1.reqUser = "wdyson";
+        audit1.repo = "cm_kafka";
         audit1.result = 0;
         audit1.event_count = 10;
         audit1.evtTime = Timestamp.valueOf("2022-09-26 10:00:00");
 
         Audit audit2 = new Audit();
         audit2.reqUser = "wdyson";
+        audit2.repo = "cm_hive";
         audit2.result = 1;
         audit2.event_count = 1;
         audit2.evtTime = Timestamp.valueOf("2022-09-26 10:10:00");
 
         Audit audit3 = new Audit();
         audit3.reqUser = "bob";
+        audit3.repo = "cm_hive";
         audit3.result = 0;
         audit3.event_count = 1;
         audit3.evtTime = Timestamp.valueOf("2022-09-26 10:10:00");
 
         Audit audit4 = new Audit();
         audit4.reqUser = "bob";
+        audit4.repo = "cm_hive";
         audit4.result = 0;
         audit4.event_count = 1;
         audit4.evtTime = Timestamp.valueOf("2022-09-26 10:20:00");
